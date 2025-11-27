@@ -1,20 +1,16 @@
-import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/constants/api_constants.dart';
-import '../../../../core/services/storage_service.dart';
+import '../../../../core/services/dio_client.dart'; // Import Dio Client Global
 import '../models/tenant_view_model.dart';
 
 // Provider untuk mengambil List Penyewa Aktif (Berdasarkan Kontrak)
 final adminTenantListProvider = FutureProvider.autoDispose<List<TenantViewModel>>((ref) async {
-  final dio = Dio();
-  final storage = StorageService();
-  final token = await storage.getToken();
+  // Ambil Dio Satpam (Otomatis Base URL & Token)
+  final dio = ref.watch(dioClientProvider);
 
   // Kita ambil semua kontrak (bisa difilter status=AKTIF jika mau hanya yang aktif saja)
   final response = await dio.get(
-    '${ApiConstants.apiUrl}/kontrak',
-    // queryParameters: {'status': 'AKTIF'}, 
-    options: Options(headers: {'Authorization': 'Bearer $token'}),
+    '/kontrak',
+    // queryParameters: {'status': 'AKTIF'}, // Uncomment jika ingin memfilter
   );
 
   final List data = response.data;

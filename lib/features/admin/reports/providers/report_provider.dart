@@ -1,17 +1,14 @@
-import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/constants/api_constants.dart';
-import '../../../../core/services/storage_service.dart';
+import '../../../../core/services/dio_client.dart'; // Import Dio Client Global
 import '../../payments/models/payment_model.dart'; // Reuse model pembayaran
 
-// 1. State untuk Filter Laporan (Menyimpan Bulan & Tahun yang dipilih)
+// 1. State untuk Filter Laporan (Tetap sama)
 class ReportFilterState {
   final String month;
   final int year;
 
   ReportFilterState({required this.month, required this.year});
 
-  // Helper untuk membuat copy object dengan nilai baru
   ReportFilterState copyWith({String? month, int? year}) {
     return ReportFilterState(
       month: month ?? this.month,
@@ -20,11 +17,11 @@ class ReportFilterState {
   }
 }
 
-// 2. Notifier untuk Mengelola State Filter
+// 2. Notifier untuk Mengelola State Filter (Tetap sama)
 class ReportFilterNotifier extends StateNotifier<ReportFilterState> {
   ReportFilterNotifier() : super(ReportFilterState(
-    month: _getCurrentMonthName(), // Default bulan ini
-    year: DateTime.now().year,     // Default tahun ini
+    month: _getCurrentMonthName(),
+    year: DateTime.now().year,
   ));
 
   void setMonth(String month) {
@@ -35,7 +32,6 @@ class ReportFilterNotifier extends StateNotifier<ReportFilterState> {
     state = state.copyWith(year: year);
   }
 
-  // Helper ubah angka bulan ke nama
   static String _getCurrentMonthName() {
     const months = [
       'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
@@ -49,33 +45,29 @@ final reportFilterProvider = StateNotifierProvider<ReportFilterNotifier, ReportF
   return ReportFilterNotifier();
 });
 
-// 3. Provider Utama: Ambil Data Laporan Berdasarkan Filter
-// Provider ini "mendengarkan" (watch) reportFilterProvider.
-// Jadi setiap kali filter berubah, provider ini otomatis fetch ulang data.
+// 3. PROVIDER UTAMA (REFACTORED)
+// Mengambil data menggunakan Dio Satpam
 final reportListProvider = FutureProvider.autoDispose<List<PaymentModel>>((ref) async {
-  // Ambil nilai filter saat ini
+  // A. Ambil nilai filter saat ini
   final filter = ref.watch(reportFilterProvider);
   
-  final dio = Dio();
-  final storage = StorageService();
-  final token = await storage.getToken();
+  // B. Ambil Dio Satpam
+  final dio = ref.watch(dioClientProvider);
 
-  // Panggil API dengan parameter bulan & tahun
+  // C. Request Simpel (Token & URL otomatis)
   final response = await dio.get(
-    '${ApiConstants.apiUrl}/pembayaran',
+    '/pembayaran',
     queryParameters: {
       'bulan': filter.month,
       'tahun': filter.year,
     },
-    options: Options(headers: {'Authorization': 'Bearer $token'}),
   );
 
   final List data = response.data;
   return data.map((e) => PaymentModel.fromJson(e)).toList();
 });
 
-// 4. Provider Statistik (Opsional tapi bagus): Menghitung Total Pemasukan
-// Ini menghitung data yang sudah diambil oleh reportListProvider tanpa fetch ulang
+// 4. Provider Statistik (Tetap sama - Logic murni)
 final reportStatsProvider = Provider.autoDispose<Map<String, dynamic>>((ref) {
   final reportAsync = ref.watch(reportListProvider);
 

@@ -23,8 +23,18 @@ class _CreateBillScreenState extends ConsumerState<CreateBillScreen> {
 
   // Daftar Nama Bulan
   final List<String> _allMonths = [
-    'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+    'Januari',
+    'Februari',
+    'Maret',
+    'April',
+    'Mei',
+    'Juni',
+    'Juli',
+    'Agustus',
+    'September',
+    'Oktober',
+    'November',
+    'Desember',
   ];
 
   @override
@@ -35,14 +45,14 @@ class _CreateBillScreenState extends ConsumerState<CreateBillScreen> {
 
   // --- LOGIC PINTAR FILTER BULAN ---
   // --- LOGIC FILTER BULAN YANG LEBIH STABIL (VERSI YYYYMM) ---
-  List<String> _getAvailableMonths() {
+ // --- LOGIC PINTAR (REVISI: Izinkan Buat Ulang jika Ditolak) ---
+List<String> _getAvailableMonths() {
     if (_selectedContract == null) return [];
 
     List<String> validMonths = [];
     final alreadyBilledList = _selectedContract!.existingBills;
 
-    // 1. Buat Format Angka untuk Start & End Kontrak (Contoh: 202512)
-    // Rumus: (Tahun * 100) + Bulan
+    // Rumus Kode Tanggal: (Tahun * 100) + Bulan
     int startCode = (_selectedContract!.startDate.year * 100) + _selectedContract!.startDate.month;
     int endCode = (_selectedContract!.endDate.year * 100) + _selectedContract!.endDate.month;
 
@@ -50,19 +60,32 @@ class _CreateBillScreenState extends ConsumerState<CreateBillScreen> {
       String monthName = _allMonths[i];
       int currentMonthNum = i + 1;
       
-      // Kode Bulan yang sedang dicek (berdasarkan Tahun inputan)
+      // Kode Bulan yang sedang dicek
       int checkCode = (_selectedYear * 100) + currentMonthNum;
 
-      // 2. Cek Apakah Masuk Rentang? (Cukup bandingkan angka integernya)
-      // Logika: checkCode harus >= startCode DAN checkCode <= endCode
+      // 1. Cek Rentang Kontrak
       bool isWithinContract = (checkCode >= startCode) && (checkCode <= endCode);
 
-      // 3. Cek Apakah Sudah Ditagih?
-      bool isAlreadyBilled = alreadyBilledList.any((bill) => 
-          bill['bulan'] == monthName && bill['tahun'] == _selectedYear
-      );
+      // 2. Cek Status Tagihan Existing (Logika Eksplisit)
+      bool shouldHide = alreadyBilledList.any((bill) {
+        bool samePeriod = bill['bulan'] == monthName && bill['tahun'] == _selectedYear;
+        
+        if (samePeriod) {
+          String status = bill['status'];
+          
+          // LOGIKA TEGAS:
+          // Sembunyikan (return true) jika statusnya 'Lunas' ATAU 'Pending'.
+          // Selain itu (termasuk 'Ditolak'), biarkan muncul (return false).
+          return status == 'Lunas' || status == 'Pending';
+        }
+        
+        return false;
+      });
 
-      if (isWithinContract && !isAlreadyBilled) {
+      // Masukkan bulan jika: 
+      // A. Masuk Masa Sewa 
+      // B. DAN Tidak harus disembunyikan (artinya belum lunas/pending)
+      if (isWithinContract && !shouldHide) {
         validMonths.add(monthName);
       }
     }
@@ -72,33 +95,41 @@ class _CreateBillScreenState extends ConsumerState<CreateBillScreen> {
   void _submitBill() async {
     if (_formKey.currentState!.validate()) {
       if (_selectedContract == null) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Pilih kontrak penyewa dulu")));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Pilih kontrak penyewa dulu")),
+        );
         return;
       }
       if (_selectedMonth == null) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Pilih bulan tagihan")));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text("Pilih bulan tagihan")));
         return;
       }
 
       setState(() => _isLoading = true);
 
-      final success = await ref.read(paymentServiceProvider).createBill(
-        _selectedContract!.id, 
-        _selectedMonth!, 
-        _selectedYear
-      );
+      final success = await ref
+          .read(paymentServiceProvider)
+          .createBill(_selectedContract!.id, _selectedMonth!, _selectedYear);
 
       setState(() => _isLoading = false);
 
       if (success && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Tagihan berhasil dibuat!"), backgroundColor: Colors.green),
+          const SnackBar(
+            content: Text("Tagihan berhasil dibuat!"),
+            backgroundColor: Colors.green,
+          ),
         );
         ref.refresh(paymentListProvider('Pending'));
         context.pop();
       } else if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Gagal membuat tagihan"), backgroundColor: Colors.red),
+          const SnackBar(
+            content: Text("Gagal membuat tagihan"),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }
@@ -107,13 +138,16 @@ class _CreateBillScreenState extends ConsumerState<CreateBillScreen> {
   @override
   Widget build(BuildContext context) {
     final contractsAsync = ref.watch(activeContractsListProvider);
-    
+
     // Hitung bulan yang tersedia
     List<String> availableMonths = _getAvailableMonths();
 
     return Scaffold(
       appBar: AppBar(
-        title: Text("Buat Tagihan Baru", style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+        title: Text(
+          "Buat Tagihan Baru",
+          style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+        ),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
@@ -124,53 +158,84 @@ class _CreateBillScreenState extends ConsumerState<CreateBillScreen> {
             children: [
               Text(
                 "Pilih Penyewa (Kontrak Aktif)",
-                style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: 16),
+                style: GoogleFonts.poppins(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
               ),
               const SizedBox(height: 12),
 
               // 1. DROPDOWN KONTRAK (DIPERBAIKI)
               contractsAsync.when(
                 loading: () => const LinearProgressIndicator(),
-                error: (err, _) => Text("Error: $err", style: const TextStyle(color: Colors.red)),
+                error: (err, _) => Text(
+                  "Error: $err",
+                  style: const TextStyle(color: Colors.red),
+                ),
                 data: (contracts) {
                   if (contracts.isEmpty) {
                     return const Text("Tidak ada kontrak aktif.");
                   }
                   return DropdownButtonFormField<SimpleContractModel>(
                     decoration: InputDecoration(
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 14,
+                      ),
                     ),
                     hint: const Text("Pilih Penyewa"),
                     value: _selectedContract,
-                    isExpanded: true, // Agar menyesuaikan lebar
-                    itemHeight: null, // PENTING: Agar item bisa multi-line (wrap)
+                    isExpanded: true,
+
+                    // ⚡ Fix tampilan saat item terpilih (agar tidak overflow)
+                    selectedItemBuilder: (context) {
+                      return contracts.map((contract) {
+                        return Text(
+                          contract.tenantName,
+                          style: GoogleFonts.poppins(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        );
+                      }).toList();
+                    },
                     items: contracts.map((contract) {
                       return DropdownMenuItem<SimpleContractModel>(
                         value: contract,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 8.0),
+                        child: SizedBox(
+                          width: double.infinity,
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            mainAxisSize: MainAxisSize.min, // PENTING: Agar tinggi seminimal mungkin
+                            mainAxisSize: MainAxisSize.min,
                             children: [
-                              Text(contract.tenantName, style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
-                              // Gunakan Flexible agar teks panjang turun ke bawah
-                              Flexible(
-                                child: Text(
-                                  "${contract.propertyName} - Kamar ${contract.roomNumber}",
-                                  style: GoogleFonts.poppins(fontSize: 12, color: Colors.grey),
-                                  maxLines: 2, 
-                                  overflow: TextOverflow.ellipsis,
+                              Text(
+                                contract.tenantName,
+                                style: GoogleFonts.poppins(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 14,
                                 ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                "${contract.propertyName} - Kamar ${contract.roomNumber}",
+                                style: GoogleFonts.poppins(
+                                  fontSize: 12,
+                                  color: Colors.grey,
+                                ),
+                                softWrap: true,
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 2,
                               ),
                             ],
                           ),
                         ),
                       );
                     }).toList(),
-                    
+
                     onChanged: (val) {
                       setState(() {
                         _selectedContract = val;
@@ -184,7 +249,10 @@ class _CreateBillScreenState extends ConsumerState<CreateBillScreen> {
               const SizedBox(height: 24),
               Text(
                 "Periode Tagihan",
-                style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: 16),
+                style: GoogleFonts.poppins(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
               ),
               const SizedBox(height: 12),
 
@@ -200,13 +268,16 @@ class _CreateBillScreenState extends ConsumerState<CreateBillScreen> {
                       keyboardType: TextInputType.number,
                       decoration: InputDecoration(
                         labelText: "Tahun",
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                         helperText: "Ubah tahun...", // Helper text dipersingkat
                       ),
                       onChanged: (val) {
                         if (val.length == 4) {
                           setState(() {
-                            _selectedYear = int.tryParse(val) ?? DateTime.now().year;
+                            _selectedYear =
+                                int.tryParse(val) ?? DateTime.now().year;
                             _selectedMonth = null;
                           });
                         }
@@ -214,7 +285,7 @@ class _CreateBillScreenState extends ConsumerState<CreateBillScreen> {
                     ),
                   ),
                   const SizedBox(width: 16),
-                  
+
                   // Dropdown Bulan (Lebar lebih besar)
                   Expanded(
                     flex: 5, // Proporsi 5 (Lebih lebar untuk teks hint panjang)
@@ -223,18 +294,34 @@ class _CreateBillScreenState extends ConsumerState<CreateBillScreen> {
                       isExpanded: true, // Mencegah overflow horizontal
                       decoration: InputDecoration(
                         labelText: "Bulan",
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
-                      items: _selectedContract == null 
-                          ? [] 
-                          : availableMonths.map((m) => DropdownMenuItem(value: m, child: Text(m))).toList(),
-                      onChanged: availableMonths.isEmpty ? null : (val) => setState(() => _selectedMonth = val!),
+                      items: _selectedContract == null
+                          ? []
+                          : availableMonths
+                                .map(
+                                  (m) => DropdownMenuItem(
+                                    value: m,
+                                    child: Text(m),
+                                  ),
+                                )
+                                .toList(),
+                      onChanged: availableMonths.isEmpty
+                          ? null
+                          : (val) => setState(() => _selectedMonth = val!),
                       // Teks hint yang aman overflow
                       hint: Text(
-                        _selectedContract == null 
-                            ? "Pilih kontrak" 
-                            : (availableMonths.isEmpty ? "Tidak ada jadwal" : "Pilih Bulan"),
-                        style: const TextStyle(fontSize: 12, color: Colors.grey),
+                        _selectedContract == null
+                            ? "Pilih kontrak"
+                            : (availableMonths.isEmpty
+                                  ? "Tidak ada jadwal"
+                                  : "Pilih Bulan"),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey,
+                        ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -254,14 +341,19 @@ class _CreateBillScreenState extends ConsumerState<CreateBillScreen> {
                   onPressed: _isLoading ? null : _submitBill,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.blueAccent,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
                   child: _isLoading
                       ? const CircularProgressIndicator(color: Colors.white)
                       : Text(
                           "Buat Tagihan",
                           style: GoogleFonts.poppins(
-                              fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
                         ),
                 ),
               ),

@@ -1,30 +1,30 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:manajemen_kosku/core/constants/api_constants.dart';
-import 'package:manajemen_kosku/core/services/storage_service.dart';
+import '../../../../core/services/dio_client.dart'; // Import Dio Client Global
 import '../models/tenant_model.dart';
 
 // 1. PROVIDER: Ambil List Penyewa (Untuk Dropdown)
 // Endpoint: GET /api/user?role=PENYEWA
 final tenantListProvider = FutureProvider.autoDispose<List<TenantModel>>((ref) async {
-  final dio = Dio();
-  final storage = StorageService();
-  final token = await storage.getToken();
+  // Gunakan Dio Satpam
+  final dio = ref.watch(dioClientProvider);
 
   final response = await dio.get(
-    '${ApiConstants.apiUrl}/user', // Menggunakan endpoint user umum
-    queryParameters: {'role': 'PENYEWA'}, // Filter via query param
-    options: Options(headers: {'Authorization': 'Bearer $token'}),
+    '/user', // Path relatif
+    queryParameters: {'role': 'PENYEWA'},
+    // Tidak perlu header manual lagi
   );
 
   final List data = response.data;
   return data.map((e) => TenantModel.fromJson(e)).toList();
 });
 
-// 2. SERVICE: Logic Membuat Kontrak
+// 2. SERVICE: Logic Membuat & Mengakhiri Kontrak
 class ContractService {
-  final Dio _dio = Dio();
-  final StorageService _storage = StorageService();
+  final Dio _dio; // Dio disuntikkan dari luar
+
+  // Constructor Injection
+  ContractService(this._dio);
 
   Future<bool> createContract({
     required int kamarId,
@@ -34,10 +34,8 @@ class ContractService {
     required double harga,
   }) async {
     try {
-      final token = await _storage.getToken();
-      
       await _dio.post(
-        '${ApiConstants.apiUrl}/kontrak',
+        '/kontrak',
         data: {
           "kamarId": kamarId,
           "penyewaId": penyewaId,
@@ -45,23 +43,18 @@ class ContractService {
           "tanggal_akhir_sewa": endDate.toIso8601String(),
           "harga_sewa_disepakati": harga,
         },
-        options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
-      
       return true;
     } catch (e) {
-      // print("Error create contract: $e");
       return false;
     }
   }
 
   Future<bool> endContract(int kontrakId) async {
     try {
-      final token = await _storage.getToken();
       await _dio.put(
-        '${ApiConstants.apiUrl}/kontrak/status/$kontrakId',
+        '/kontrak/status/$kontrakId',
         data: {"status_kontrak": "BERAKHIR"},
-        options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
       return true;
     } catch (e) {
@@ -70,8 +63,13 @@ class ContractService {
   }
 }
 
-final contractServiceProvider = Provider((ref) => ContractService());
+// Provider Service (Inject Dio)
+final contractServiceProvider = Provider((ref) {
+  final dio = ref.watch(dioClientProvider);
+  return ContractService(dio);
+});
 
+// --- MODEL (Tetap Sama) ---
 
 class ContractDetailModel {
   final int id;
@@ -81,7 +79,7 @@ class ContractDetailModel {
   final DateTime startDate;
   final DateTime endDate;
   final double price;
-  final String roomNumber; // <--- TAMBAHAN FIELD
+  final String roomNumber; 
   
   ContractDetailModel({
     required this.id,
@@ -91,7 +89,7 @@ class ContractDetailModel {
     required this.startDate,
     required this.endDate,
     required this.price,
-    required this.roomNumber, // <--- TAMBAHAN
+    required this.roomNumber, 
   });
 
   factory ContractDetailModel.fromJson(Map<String, dynamic> json) {
@@ -103,24 +101,23 @@ class ContractDetailModel {
       startDate: DateTime.parse(json['tanggal_mulai_sewa']),
       endDate: DateTime.parse(json['tanggal_akhir_sewa']),
       price: (json['harga_sewa_disepakati'] ?? 0).toDouble(),
-      roomNumber: json['kamar']['nomor_kamar'] ?? '-', // <--- AMBIL DARI JSON
+      roomNumber: json['kamar']['nomor_kamar'] ?? '-', 
     );
   }
 }
 
 // 3. PROVIDER: Ambil Detail Kontrak Aktif by Kamar ID
 final activeContractProvider = FutureProvider.autoDispose.family<ContractDetailModel, String>((ref, kamarId) async {
-  final dio = Dio();
-  final storage = StorageService();
-  final token = await storage.getToken();
+  final dio = ref.watch(dioClientProvider);
 
   final response = await dio.get(
-    '${ApiConstants.apiUrl}/kontrak/active/kamar/$kamarId',
-    options: Options(headers: {'Authorization': 'Bearer $token'}),
+    '/kontrak/active/kamar/$kamarId',
   );
 
   return ContractDetailModel.fromJson(response.data);
 });
+
+// --- MODEL DROPDOWN (Tetap Sama) ---
 
 class SimpleContractModel {
   final int id;
@@ -129,7 +126,6 @@ class SimpleContractModel {
   final String propertyName;
   final DateTime startDate;
   final DateTime endDate;
-  // --- TAMBAHAN: List Tagihan yang sudah ada ---
   final List<Map<String, dynamic>> existingBills; 
 
   SimpleContractModel({
@@ -139,7 +135,7 @@ class SimpleContractModel {
     required this.propertyName,
     required this.startDate,
     required this.endDate,
-    required this.existingBills, // Masukkan ke constructor
+    required this.existingBills, 
   });
 
   factory SimpleContractModel.fromJson(Map<String, dynamic> json) {
@@ -148,13 +144,13 @@ class SimpleContractModel {
       tenantName: json['penyewa']['nama'] ?? 'Tanpa Nama',
       roomNumber: json['kamar']['nomor_kamar'] ?? '-',
       propertyName: json['kamar']['properti']['nama_properti'] ?? '-',
-     startDate: DateTime.parse(json['tanggal_mulai_sewa']).toLocal(),
+      startDate: DateTime.parse(json['tanggal_mulai_sewa']).toLocal(),
       endDate: DateTime.parse(json['tanggal_akhir_sewa']).toLocal(),
-      // --- PARSING DATA PEMBAYARAN ---
       existingBills: List<Map<String, dynamic>>.from(
         (json['pembayaran'] ?? []).map((x) => {
           'bulan': x['bulan'],
-          'tahun': x['tahun']
+          'tahun': x['tahun'],
+          'status': x['status']
         })
       ),
     );
@@ -163,15 +159,12 @@ class SimpleContractModel {
 
 // Provider untuk mengambil semua kontrak AKTIF (Buat Dropdown)
 final activeContractsListProvider = FutureProvider.autoDispose<List<SimpleContractModel>>((ref) async {
-  final dio = Dio();
-  final storage = StorageService();
-  final token = await storage.getToken();
+  final dio = ref.watch(dioClientProvider);
 
   // Panggil endpoint getAllKontrak dengan filter status=AKTIF
   final response = await dio.get(
-    '${ApiConstants.apiUrl}/kontrak',
+    '/kontrak',
     queryParameters: {'status': 'AKTIF'}, 
-    options: Options(headers: {'Authorization': 'Bearer $token'}),
   );
 
   final List data = response.data;

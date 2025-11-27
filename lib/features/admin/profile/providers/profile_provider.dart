@@ -1,28 +1,25 @@
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/constants/api_constants.dart';
-import '../../../../core/services/storage_service.dart';
-import '../../tenants/models/tenant_crud_model.dart'; // Kita reuse model user yang sudah ada
+import '../../../../core/services/dio_client.dart'; // Import Dio Client Global
+import '../../tenants/models/tenant_crud_model.dart'; 
 
-// 1. PROVIDER: Ambil Data Profil Saya (GET /api/user/me)
+// 1. PROVIDER: Ambil Data Profil Saya
 final myProfileProvider = FutureProvider.autoDispose<TenantCrudModel>((ref) async {
-  final dio = Dio();
-  final storage = StorageService();
-  final token = await storage.getToken();
+  // Gunakan Dio yang sudah ada Interceptor-nya
+  final dio = ref.watch(dioClientProvider);
 
-  final response = await dio.get(
-    '${ApiConstants.apiUrl}/user/me',
-    options: Options(headers: {'Authorization': 'Bearer $token'}),
-  );
+  final response = await dio.get('/user/me'); // Cukup path relatif
 
   return TenantCrudModel.fromJson(response.data);
 });
 
-// 2. SERVICE: Aksi (Update Profil, Ganti Password, Upload KTP)
+// 2. SERVICE: Logic Update, Ganti Pass, Upload
 class ProfileService {
-  final Dio _dio = Dio();
-  final StorageService _storage = StorageService();
+  final Dio _dio; // Dio diterima dari luar (via Provider)
+
+  // Constructor: Kita paksa Service ini menerima Dio yang sudah "aman"
+  ProfileService(this._dio);
 
   // Update Data Diri
   Future<bool> updateProfile({
@@ -31,15 +28,15 @@ class ProfileService {
     required String alamat,
   }) async {
     try {
-      final token = await _storage.getToken();
+      // Tidak perlu ambil token manual lagi (sudah dihandle Interceptor)
       await _dio.put(
-        '${ApiConstants.apiUrl}/user/me',
+        '/user/me', // Path relatif saja
         data: {
           "nama": nama,
           "no_hp": noHp,
           "alamat": alamat,
         },
-        options: Options(headers: {'Authorization': 'Bearer $token'}),
+        // Tidak perlu options header manual lagi
       );
       return true;
     } catch (e) {
@@ -50,11 +47,9 @@ class ProfileService {
   // Ganti Password
   Future<bool> changePassword(String newPassword) async {
     try {
-      final token = await _storage.getToken();
       await _dio.put(
-        '${ApiConstants.apiUrl}/user/me',
+        '/user/me',
         data: {"password": newPassword},
-        options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
       return true;
     } catch (e) {
@@ -65,7 +60,6 @@ class ProfileService {
   // Upload Foto KTP
   Future<bool> uploadKtp(File imageFile) async {
     try {
-      final token = await _storage.getToken();
       String fileName = imageFile.path.split('/').last;
       
       FormData formData = FormData.fromMap({
@@ -73,9 +67,8 @@ class ProfileService {
       });
 
       await _dio.post(
-        '${ApiConstants.apiUrl}/upload/ktp',
+        '/upload/ktp',
         data: formData,
-        options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
       return true;
     } catch (e) {
@@ -84,4 +77,11 @@ class ProfileService {
   }
 }
 
-final profileServiceProvider = Provider((ref) => ProfileService());
+// 3. DEFINISI PROVIDER SERVICE (PENTING!)
+final profileServiceProvider = Provider((ref) {
+  // A. Ambil Dio yang sudah ada satpamnya
+  final dio = ref.watch(dioClientProvider);
+  
+  // B. Masukkan ke dalam Service
+  return ProfileService(dio);
+});

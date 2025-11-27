@@ -1,26 +1,29 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/constants/api_constants.dart';
-import '../../../../core/services/storage_service.dart';
+import '../../../../core/services/dio_client.dart'; // Import Dio Client Global
 import '../models/tenant_crud_model.dart';
 
+// 1. STATE NOTIFIER (Logic CRUD)
 class TenantCrudNotifier extends StateNotifier<AsyncValue<List<TenantCrudModel>>> {
-  final Dio _dio = Dio();
-  final StorageService _storage = StorageService();
+  final Dio _dio; // Dio disuntikkan dari luar
 
-  TenantCrudNotifier() : super(const AsyncValue.loading()) {
+  // Constructor Injection
+  TenantCrudNotifier(this._dio) : super(const AsyncValue.loading()) {
     fetchTenants();
   }
 
   // GET ALL TENANTS
   Future<void> fetchTenants() async {
     try {
-      final token = await _storage.getToken();
+      // Hanya set loading jika data belum ada (agar tidak flickering saat refresh)
+      if (state.value == null) state = const AsyncValue.loading();
+      
+      // Request simpel (Token & Base URL otomatis)
       final response = await _dio.get(
-        '${ApiConstants.apiUrl}/user',
+        '/user',
         queryParameters: {'role': 'PENYEWA'}, // Ambil hanya penyewa
-        options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
+
       final List data = response.data;
       state = AsyncValue.data(data.map((e) => TenantCrudModel.fromJson(e)).toList());
     } catch (e, s) {
@@ -31,14 +34,12 @@ class TenantCrudNotifier extends StateNotifier<AsyncValue<List<TenantCrudModel>>
   // ADD TENANT
   Future<bool> addTenant(String nama, String email, String hp, String alamat, String password) async {
     try {
-      final token = await _storage.getToken();
       await _dio.post(
-        '${ApiConstants.apiUrl}/user',
+        '/user',
         data: {
           "nama": nama, "email": email, "no_hp": hp, 
           "alamat": alamat, "password": password
         },
-        options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
       await fetchTenants(); // Refresh list
       return true;
@@ -50,7 +51,6 @@ class TenantCrudNotifier extends StateNotifier<AsyncValue<List<TenantCrudModel>>
   // EDIT TENANT
   Future<bool> editTenant(int id, String nama, String email, String hp, String alamat, {String? password}) async {
     try {
-      final token = await _storage.getToken();
       final data = {
         "nama": nama, "email": email, "no_hp": hp, "alamat": alamat
       };
@@ -59,9 +59,8 @@ class TenantCrudNotifier extends StateNotifier<AsyncValue<List<TenantCrudModel>>
       }
 
       await _dio.put(
-        '${ApiConstants.apiUrl}/user/$id',
+        '/user/$id',
         data: data,
-        options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
       await fetchTenants();
       return true;
@@ -73,10 +72,8 @@ class TenantCrudNotifier extends StateNotifier<AsyncValue<List<TenantCrudModel>>
   // DELETE TENANT
   Future<bool> deleteTenant(int id) async {
     try {
-      final token = await _storage.getToken();
       await _dio.delete(
-        '${ApiConstants.apiUrl}/user/$id',
-        options: Options(headers: {'Authorization': 'Bearer $token'}),
+        '/user/$id',
       );
       await fetchTenants();
       return true;
@@ -86,6 +83,10 @@ class TenantCrudNotifier extends StateNotifier<AsyncValue<List<TenantCrudModel>>
   }
 }
 
+// 2. PROVIDER DEFINITION
 final tenantCrudProvider = StateNotifierProvider<TenantCrudNotifier, AsyncValue<List<TenantCrudModel>>>((ref) {
-  return TenantCrudNotifier();
+  // Ambil Dio Satpam
+  final dio = ref.watch(dioClientProvider);
+  // Masukkan ke Notifier
+  return TenantCrudNotifier(dio);
 });

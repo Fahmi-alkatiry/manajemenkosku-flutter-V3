@@ -39,6 +39,10 @@ dependencies:
   google_fonts: ^6.1.0 # Agar UI terlihat modern
   flutter_svg: ^2.0.7 # Opsional, untuk icon yang tajam
   url_launcher: ^6.2.4
+  flutter_launcher_icons: ^0.13.1
+
+
+  
 
   
 dev_dependencies:
@@ -93,3 +97,9 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+flutter_launcher_icons:
+  android: "ic_launcher" # Ini yang bikin nama file jadi standar
+  ios: true
+  image_path: "assets/icon_app.png" # Sesuaikan dengan lokasi gambar Anda
+  min_sdk_android: 21 # Penting untuk icon adaptif modern

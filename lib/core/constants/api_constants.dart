@@ -3,7 +3,7 @@ class ApiConstants {
   // Jika pakai HP fisik (USB debugging), gunakan IP Laptop (misal 192.168.1.x)
   // http://192.168.100.140:5000
   // https://flutter.api.myperfume.my.id/
-  static const String baseUrl = 'http://192.168.100.140:5000'; 
+  static const String baseUrl = 'https://flutter.api.myperfume.my.id'; 
   static const String apiUrl = '$baseUrl/api';
   
   // Helper untuk menampilkan gambar dari server

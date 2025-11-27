@@ -6,6 +6,7 @@ import 'package:intl/intl.dart'; // Pastikan sudah 'flutter pub add intl'
 import '../../../auth/providers/auth_provider.dart';
 import '../providers/dashboard_provider.dart';
 import 'package:manajemen_kosku/features/admin/dashboard/models/dashboard_model.dart';
+import '../../payments/models/payment_model.dart'; // Import model Payment
 
 class AdminDashboardScreen extends ConsumerWidget {
   const AdminDashboardScreen({super.key});
@@ -207,9 +208,25 @@ class AdminDashboardScreen extends ConsumerWidget {
           side: BorderSide(color: Colors.grey.shade200),
           borderRadius: BorderRadius.circular(12)),
       child: InkWell(
-        onTap: () {
-           // Navigasi ke detail verifikasi menggunakan ID Pembayaran
-           context.go('/admin/verification/detail/${bill.id}');
+       onTap: () {
+           // KITA KONVERSI DATA DASHBOARD JADI PAYMENT MODEL
+           // Agar bisa diterima oleh halaman Detail Verifikasi
+           final payment = PaymentModel(
+             id: bill.id,
+             bulan: bill.bulan,
+             tahun: bill.tahun,
+             jumlah: bill.jumlah,
+             status: bill.status,
+             tenantName: bill.penyewaNama,
+             roomNumber: bill.kamarNomor,
+             // Data di bawah ini tidak tersedia di Dashboard (Lite), kita isi default/null
+             contractId: 0, 
+             buktiPembayaran: null, 
+             tanggalJatuhTempo: null,
+           );
+
+           // Navigasi ke rute yang benar dengan membawa objek 'extra'
+           context.go('/admin/verification/detail', extra: payment);
         },
         borderRadius: BorderRadius.circular(12),
         child: Padding(
